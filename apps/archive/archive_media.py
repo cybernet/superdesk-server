@@ -2,6 +2,7 @@ import logging
 
 from flask import abort, current_app as app
 from eve.utils import config
+from apps.archive import ArchiveVersionsResource
 
 from superdesk.media.media_operations import process_file_from_stream, decode_metadata
 from superdesk.media.renditions import generate_renditions, delete_file_on_error
@@ -14,28 +15,34 @@ from .common import on_create_media_archive, on_update_media_archive, on_delete_
 from superdesk.activity import add_activity
 from apps.content import metadata_schema
 from superdesk.services import BaseService
+from .archive import SOURCE as ARCHIVE
 
 
 logger = logging.getLogger(__name__)
 
 
+class ArchiveMediaVersionsResource(ArchiveVersionsResource):
+    """
+    Resource class for versions of archive_media
+    """
+
+    datasource = {'source': ARCHIVE + '_versions'}
+
+
 class ArchiveMediaResource(Resource):
     endpoint_name = ARCHIVE_MEDIA
     schema = {
-        'media': {
-            'type': 'file',
-            'required': True
-        },
         'upload_id': {'type': 'string'}
     }
 
     schema.update(metadata_schema)
 
-    datasource = {'source': 'archive'}
+    datasource = {'source': ARCHIVE}
 
     resource_methods = ['POST']
     item_methods = ['PATCH', 'GET', 'DELETE']
     item_url = item_url
+    versioning = True
 
 
 class ArchiveMediaService(BaseService):
@@ -52,6 +59,9 @@ class ArchiveMediaService(BaseService):
         """ Create corresponding item on file upload """
 
         for doc in docs:
+            if 'media' not in doc or doc['media'] is None:
+                abort(400, description="No media found")
+
             file, content_type, metadata = self.get_file_from_document(doc)
             inserted = [doc['media']]
             file_type = content_type.split('/')[0]
@@ -76,7 +86,7 @@ class ArchiveMediaService(BaseService):
                 if not doc.get('_import', None):
                     set_original_creator(doc)
 
-                add_activity('uploaded media {{ name }}',
+                add_activity('upload', 'uploaded media {{ name }}', item=doc,
                              name=doc.get('headline', doc.get('mimetype')),
                              renditions=doc.get('renditions'))
 
@@ -98,8 +108,7 @@ class ArchiveMediaService(BaseService):
             file_name, content_type, metadata = res
             logger.debug('Going to save media file with %s ' % file_name)
             content.seek(0)
-            id = app.media.put(content, filename=file_name, content_type=content_type, metadata=metadata)
-            doc['media'] = id
+            doc['media'] = app.media.put(content, filename=file_name, content_type=content_type, metadata=metadata)
             return content, content_type, decode_metadata(metadata)
 
         return file, file.content_type, file.metadata

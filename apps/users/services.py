@@ -1,4 +1,4 @@
-from superdesk.activity import add_activity
+from superdesk.activity import add_activity, ACTIVITY_CREATE, ACTIVITY_DELETE
 from superdesk.services import BaseService
 from superdesk.utils import is_hashed, get_hash
 from superdesk import get_resource_service, SuperdeskError
@@ -30,7 +30,8 @@ class UsersService(BaseService):
     def on_created(self, docs):
         for user_doc in docs:
             self.update_user_defaults(user_doc)
-            add_activity('created user {{user}}', user=user_doc.get('display_name', user_doc.get('username')))
+            add_activity(ACTIVITY_CREATE, 'created user {{user}}',
+                         user=user_doc.get('display_name', user_doc.get('username')))
 
     def on_updated(self, updates, user):
         self.handle_status_changed(updates, user)
@@ -47,7 +48,7 @@ class UsersService(BaseService):
                 send_user_status_changed_email([user['email']], status)
 
     def on_deleted(self, doc):
-        add_activity('removed user {{user}}', user=doc.get('display_name', doc.get('username')))
+        add_activity(ACTIVITY_DELETE, 'removed user {{user}}', user=doc.get('display_name', doc.get('username')))
 
     def on_fetched(self, document):
         for doc in document['_items']:
@@ -87,15 +88,18 @@ class DBUsersService(UsersService):
                 id = resetService.store_reset_password_token(tokenDoc, doc['email'], activate_ttl, doc['_id'])
                 if not id:
                     raise SuperdeskError('Failed to send account activation email.')
+                tokenDoc.update({'username': doc['username']})
                 send_activate_account_email(tokenDoc)
 
     def on_update(self, updates, user):
         if updates.get('first_name') or updates.get('last_name'):
-            updated_user = {'first_name': updates.get('first_name', ''),
-                            'last_name': updates.get('last_name', ''),
+            updated_user = {'first_name': user.get('first_name', ''),
+                            'last_name': user.get('last_name', ''),
                             'username': user.get('username', '')}
-            updated_user.setdefault('first_name', user.get('first_name', ''))
-            updated_user.setdefault('last_name', user.get('last_name', ''))
+            if updates.get('first_name'):
+                updated_user['first_name'] = updates.get('first_name')
+            if updates.get('last_name'):
+                updated_user['last_name'] = updates.get('last_name')
             updates['display_name'] = get_display_name(updated_user)
 
     def update_password(self, user_id, password):

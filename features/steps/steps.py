@@ -20,6 +20,7 @@ from wooper.assertions import (
 from urllib.parse import urlparse
 from os.path import basename
 from superdesk.tests import test_user, get_prefixed_url
+from re import findall
 
 external_url = 'http://thumbs.dreamstime.com/z/digital-nature-10485007.jpg'
 
@@ -136,15 +137,24 @@ def set_placeholder(context, name, value):
     old_p = getattr(context, 'placeholders', None)
     if not old_p:
         context.placeholders = dict()
-    context.placeholders['#%s#' % name] = value
+    context.placeholders[name] = value
 
 
 def apply_placeholders(context, text):
-    placeholders = getattr(context, 'placeholders', None)
-    if not placeholders:
-        return text
-    for tag, value in placeholders.items():
-        text = text.replace(tag, value)
+    placeholders = getattr(context, 'placeholders', {})
+    for placeholder in findall('#([^#]+)#', text):
+        if placeholder not in placeholders:
+            resource_name, field_name = placeholder.lower().split('_')
+            if field_name == 'id':
+                field_name = '_%s' % field_name
+            resource = getattr(context, resource_name, None)
+            if resource and field_name in resource:
+                value = str(resource[field_name])
+            else:
+                continue
+        else:
+            value = placeholders[placeholder]
+        text = text.replace('#%s#' % placeholder, value)
     return text
 
 
@@ -160,6 +170,9 @@ def step_impl_given_(context, resource):
     with context.app.test_request_context(context.app.config['URL_PREFIX']):
         get_resource_service(resource).delete_action()
         items = [parse(item, resource) for item in json.loads(data)]
+        if resource in ('users', '/users'):
+            for item in items:
+                item.setdefault('needs_activation', False)
         get_resource_service(resource).post(items)
         context.data = items
         context.resource = resource
@@ -240,6 +253,10 @@ def step_impl_fetch_from_provider_ingest(context, provider_name, guid):
 @when('we post to "{url}"')
 def step_impl_when_post_url(context, url):
     data = apply_placeholders(context, context.text)
+    if url in ('/users', 'users'):
+        user = json.loads(data)
+        user.setdefault('needs_activation', False)
+        data = json.dumps(user)
     context.response = context.client.post(get_prefixed_url(context.app, url), data=data, headers=context.headers)
     store_placeholder(context, url)
 
@@ -747,14 +764,14 @@ def step_impl_then_get_picture(context):
     expect_json_contains(context.response, 'picture_url')
 
 
-@then('we get facets "{keys}"')
-def step_impl_then_get_facets(context, keys):
+@then('we get aggregations "{keys}"')
+def step_impl_then_get_aggs(context, keys):
     assert_200(context.response)
-    expect_json_contains(context.response, '_facets')
+    expect_json_contains(context.response, '_aggregations')
     data = get_json_data(context.response)
-    facets = data['_facets']
+    aggs = data['_aggregations']
     for key in keys.split(','):
-        assert_in(key, facets)
+        assert_in(key, aggs)
 
 
 @then('the file is stored localy')

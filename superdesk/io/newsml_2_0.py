@@ -75,7 +75,7 @@ class NewsMLTwoParser(Parser):
         parse_meta_item_text('name', 'dateline', meta.find(self.qname('located')))
 
         try:
-            item['description_text'] = meta.find(self.qname('description')).text
+            item['description'] = meta.find(self.qname('description')).text
         except AttributeError:
             pass
 
@@ -94,7 +94,7 @@ class NewsMLTwoParser(Parser):
             for name_el in genre_el.findall(self.qname('name')):
                 lang = name_el.get(self.qname("lang", ns='xml'))
                 if lang and lang.startswith('en'):
-                    item['genre'].append(name_el.text)
+                    item['genre'].append({'name': name_el.text})
 
     def parse_content_subject(self, tree, item):
         """Parse subj type subjects into subject list."""

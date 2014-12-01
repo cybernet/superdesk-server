@@ -60,20 +60,30 @@ Use honchu to run the app - it will start api server on port `5000`, websocket s
 $ honcho start
 ```
 
-## Running Docker containers with Vagrant
+## Running Docker containers with fig
 
-Vagrant is configured to create and start Docker container not only for Superdesk application itself but also for the depended services (mongodb, redis, elasticsearch).
+Fig is configured to create and start Docker container not only for Superdesk application itself but also for the depended services (mongodb, redis, elasticsearch).
+It will mount git repo root inside the container so all the local changes will be reflected there.
 So after running this command server will start listening on `localhost:5000` for REST API and on `localhost:5100` for WebSockets:
 
 ```sh
-$ vagrant up --provider=docker
+$ fig up
 ```
 
-To create user you can run that command (it will start container instance for command execution):
+To create user you can run that command (it will start container instance for command execution and start depended service if needed):
 
 ```sh
-docker run -i --link mongodb:mongodb --link elastic:elastic superdesk/server python3 manage.py users:create -u admin -p admin -e "admin@example.com" --admin=true
+fig run web python3 manage.py users:create -u admin -p admin -e "admin@example.com" --admin=true
 ```
+
+To rebuild environment(ie changes to environemnt or dependencies):
+
+```sh
+fig build ; and rm -f ./celerybeat.pid ; and fig up
+```
+
+For more commandline magic go to their docs: http://www.fig.sh/cli.html
+
 
 ### API Documentation
 

@@ -2,32 +2,37 @@ from superdesk.resource import Resource
 LINKED_IN_PACKAGES = 'linked_in_packages'
 
 
+not_analyzed = {'type': 'string', 'index': 'not_analyzed'}
+
+
 metadata_schema = {
     # Identifiers
     'guid': {
         'type': 'string',
-        'unique': True
+        'unique': True,
+        'mapping': not_analyzed
     },
     'unique_id': {
         'type': 'integer',
-        'unique': True
+        'unique': True,
     },
     'unique_name': {
         'type': 'string',
-        'unique': True
+        'unique': True,
+        'mapping': not_analyzed
     },
     'parent_id': {
         'type': 'string',
-        'unique': True
+        'unique': True,
+        'mapping': not_analyzed
     },
     'version': {
         'type': 'integer'
     },
 
     # Audit Information
-    'original_creator': Resource.rel('users', True),
-    'version_creator': Resource.rel('users', True),
-
+    'original_creator': Resource.rel('users'),
+    'version_creator': Resource.rel('users'),
     'firstcreated': {
         'type': 'datetime'
     },
@@ -36,31 +41,54 @@ metadata_schema = {
     },
 
     # Ingest Details
-    'ingest_provider': Resource.rel('ingest_providers', True),
+    'ingest_provider': Resource.rel('ingest_providers'),
     'source': {     # The value is copied from the ingest_providers vocabulary
-        'type': 'string'
+        'type': 'string',
+        'mapping': not_analyzed
     },
     'original_source': {    # This value is extracted from the ingest
-        'type': 'string'
+        'type': 'string',
+        'mapping': not_analyzed
     },
     'ingest_provider_sequence': {
-        'type': 'string'
+        'type': 'string',
+        'mapping': not_analyzed
     },
 
     # Copyright Information
     'usageterms': {
-        'type': 'string'
+        'type': 'string',
+        'mapping': not_analyzed
     },
 
     # Category Details
     'anpa-category': {
-        'type': 'string'
+        'type': 'dict',
+        'mapping': {
+            'type': 'object',
+            'properties': {
+                'qcode': not_analyzed,
+                'name': not_analyzed,
+            }
+        }
     },
+
     'subject': {
-        'type': 'list'
+        'type': 'list',
+        'mapping': {
+            'properties': {
+                'qcode': not_analyzed,
+                'name': not_analyzed
+            }
+        }
     },
     'genre': {
-        'type': 'list'
+        'type': 'list',
+        'mapping': {
+            'properties': {
+                'name': not_analyzed
+            }
+        }
     },
 
     # Story Metadata
@@ -68,11 +96,13 @@ metadata_schema = {
         'type': 'string',
         'required': True,
         'allowed': ['text', 'preformatted', 'audio', 'video', 'picture', 'graphic', 'composite'],
-        'default': 'text'
+        'default': 'text',
+        'mapping': not_analyzed
     },
     'language': {
         'type': 'string',
-        'default': 'en'
+        'default': 'en',
+        'mapping': not_analyzed
     },
     'abstract': {
         'type': 'string'
@@ -93,21 +123,21 @@ metadata_schema = {
         'type': 'integer'
     },
     'priority': {
-        'type': 'string'
+        'type': 'string',
+        'mapping': not_analyzed
     },
     'urgency': {
         'type': 'integer'
     },
-    'abstract': {
-        'type': 'string'
-    },
     'pubstatus': {
         'type': 'string',
         'allowed': ['Usable', 'Withhold', 'Canceled'],
-        'default': 'Usable'
+        'default': 'Usable',
+        'mapping': not_analyzed
     },
     'signal': {
-        'type': 'string'
+        'type': 'string',
+        'mapping': not_analyzed
     },
     'byline': {
         'type': 'string'
@@ -136,8 +166,12 @@ metadata_schema = {
     },
 
     # Media Related
+    'media': {
+        'type': 'file'
+    },
     'mimetype': {
-        'type': 'string'
+        'type': 'string',
+        'mapping': not_analyzed
     },
     'renditions': {
         'type': 'dict'
@@ -168,24 +202,25 @@ metadata_schema = {
         'schema': {
             'type': 'dict',
             'schema': {
-                'package': Resource.rel('packages', True)
+                'package': Resource.rel('packages')
             }
         }
     },
 
     # Task and Lock Details
     'task_id': {
-        'type': 'string'
+        'type': 'string',
+        'mapping': not_analyzed,
+        'versioned': False
     },
-    'lock_user': Resource.rel('users', embeddable=True),
+
+    'lock_user': Resource.rel('users'),
     'lock_time': {
-        'type': 'datetime'
+        'type': 'datetime',
+        'versioned': False
     },
-    'lock_session': Resource.rel('auth', embeddable=True),
-    'is_spiked': {
-        'type': 'boolean'
-    },
-    'expiry': {
-        'type': 'datetime'
-    }
+    'lock_session': Resource.rel('auth')
 }
+
+metadata_schema['lock_user']['versioned'] = False
+metadata_schema['lock_session']['versioned'] = False
