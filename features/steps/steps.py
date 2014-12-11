@@ -6,6 +6,8 @@ from behave import given, when, then  # @UnresolvedImport
 from flask import json
 from eve.methods.common import parse
 from superdesk import default_user_preferences, get_resource_service, utc
+from superdesk.utc import utcnow
+from eve.io.mongo import MongoJSONEncoder
 
 from wooper.general import fail_and_print_body, apply_path,\
     parse_json_response
@@ -30,7 +32,6 @@ def test_json(context):
         response_data = json.loads(context.response.get_data())
     except Exception:
         fail_and_print_body(context.response, 'response is not valid json')
-
     context_data = json.loads(apply_placeholders(context, context.text))
     assert_equal(json_match(context_data, response_data), True,
                  msg=str(context_data) + '\n != \n' + str(response_data))
@@ -214,7 +215,7 @@ def step_impl_given_config(context):
 def step_impl_given_role(context, role_name):
     with context.app.test_request_context(context.app.config['URL_PREFIX']):
         role = get_resource_service('roles').find_one(name=role_name, req=None)
-        data = json.dumps({'roles': [str(role['_id'])]})
+        data = MongoJSONEncoder().encode({'role': role.get('_id')})
     response = patch_current_user(context, data)
     assert_ok(response)
 
@@ -225,14 +226,6 @@ def step_impl_given_user_type(context, user_type):
         data = json.dumps({'user_type': user_type})
     response = patch_current_user(context, data)
     assert_ok(response)
-
-
-@given('role "{extending_name}" extends "{extended_name}"')
-def step_impl_given_role_extends(context, extending_name, extended_name):
-    with context.app.test_request_context(context.app.config['URL_PREFIX']):
-        extended = get_resource_service('roles').find_one(name=extended_name, req=None)
-        extending = get_resource_service('roles').find_one(name=extending_name, req=None)
-        get_resource_service('roles').patch(extending['_id'], {'extends': extended['_id']})
 
 
 @when('we post to auth')
@@ -247,7 +240,10 @@ def step_impl_fetch_from_provider_ingest(context, provider_name, guid):
         provider = get_resource_service('ingest_providers').find_one(name=provider_name, req=None)
         provider_service = context.provider_services[provider.get('type')]
         provider_service.provider = provider
-        context.ingest_items(provider, provider_service.fetch_ingest(guid))
+        items = provider_service.fetch_ingest(guid)
+        for item in items:
+            item['versioncreated'] = utcnow()
+        context.ingest_items(provider, items)
 
 
 @when('we post to "{url}"')
@@ -327,6 +323,7 @@ def when_we_find_for_resource_the_id_as_name_by_search_criteria(context, resourc
 
 @when('we delete "{url}"')
 def step_impl_when_delete_url(context, url):
+    url = apply_placeholders(context, url)
     res = get_res(url, context)
     href = get_self_href(res, context)
     headers = if_match(context, res.get('_etag'))
@@ -459,8 +456,13 @@ def step_impl_then_get_error(context, code):
 @then('we get list with {total_count} items')
 def step_impl_then_get_list(context, total_count):
     assert_200(context.response)
-    expect_json_length(context.response, int(total_count), path='_items')
-    if total_count == 0 or not context.text:
+    data = get_json_data(context.response)
+    int_count = int(total_count.replace('+', ''))
+    if '+' in total_count:
+        assert int_count <= data['_meta']['total']
+    else:
+        assert int_count == data['_meta']['total']
+    if int_count == 0 or not context.text:
         return
     test_json(context)
 
@@ -490,6 +492,8 @@ def step_impl_then_get_code(context, code):
 @then('we get updated response')
 def step_impl_then_get_updated(context):
     assert_ok(context.response)
+    if context.text:
+        test_json(context)
 
 
 @then('we get "{key}" in "{url}"')
@@ -887,6 +891,7 @@ def we_reset_password_for_user(context):
 def when_we_switch_user(context):
     user = {'username': 'test-user-2', 'password': 'pwd', 'is_active': True, 'needs_activation': False}
     tests.setup_auth_user(context, user)
+    set_placeholder(context, 'USERS_ID', str(context.user['_id']))
 
 
 @when('we setup test user')
@@ -1062,12 +1067,6 @@ def step_get_activation_email(context):
     assert token
 
 
-@when('role "{extending_name}" extends "{extended_name}"')
-def step_role_extends(context, extending_name, extended_name):
-    with context.app.test_request_context(context.app.config['URL_PREFIX']):
-        extended = get_resource_service('roles').find_one(name=extended_name, req=None)
-        extending = get_resource_service('roles').find_one(name=extending_name, req=None)
-        headers = if_match(context, extending.get('_etag'))
-        data = json.dumps({'extends': str(extended['_id'])})
-        context.response = context.client.patch(get_prefixed_url(context.app, '/roles/%s' % extending['_id']),
-                                                data=data, headers=headers)
+@then('we set elastic limit')
+def step_set_limit(context):
+    context.app.settings['MAX_SEARCH_DEPTH'] = 1

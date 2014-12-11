@@ -32,7 +32,8 @@ class ArchiveMediaVersionsResource(ArchiveVersionsResource):
 class ArchiveMediaResource(Resource):
     endpoint_name = ARCHIVE_MEDIA
     schema = {
-        'upload_id': {'type': 'string'}
+        'upload_id': {'type': 'string'},
+        'task': {'type': 'dict'},
     }
 
     schema.update(metadata_schema)
@@ -43,6 +44,7 @@ class ArchiveMediaResource(Resource):
     item_methods = ['PATCH', 'GET', 'DELETE']
     item_url = item_url
     versioning = True
+    privileges = {'POST': 'archive', 'PATCH': 'archive', 'DELETE': 'archive'}
 
 
 class ArchiveMediaService(BaseService):

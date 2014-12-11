@@ -1,3 +1,6 @@
+
+import flask
+from superdesk.io import get_word_count
 from superdesk.resource import Resource
 from .common import extra_response_fields, item_url, aggregations
 from .common import on_create_item, on_create_media_archive, on_update_media_archive, on_delete_media_archive
@@ -31,12 +34,29 @@ def get_subject(doc1, doc2=None):
             return value
 
 
+def private_content_filter():
+    """Filter out out users private content if this is a user request.
+
+    As private we treat items where user is creator, last version creator,
+    or has the item assigned to him atm.
+    """
+    user = getattr(flask.g, 'user', None)
+    if user:
+        return {'or': [
+            {'exists': {'field': 'task.desk'}},
+            {'term': {'task.user': str(user['_id'])}},
+            {'term': {'version_creator': str(user['_id'])}},
+            {'term': {'original_creator': str(user['_id'])}},
+        ]}
+
+
 class ArchiveVersionsResource(Resource):
     schema = metadata_schema
     extra_response_fields = extra_response_fields
     item_url = item_url
     resource_methods = []
     internal_resource = True
+    privileges = {'PATCH': 'archive'}
 
 
 class ArchiveVersionsService(BaseService):
@@ -53,7 +73,8 @@ class ArchiveResource(Resource):
         },
         'last_version': {
             'type': 'number',
-        }
+        },
+        'task': {'type': 'dict'}
     }
     schema.update(metadata_schema)
     extra_response_fields = extra_response_fields
@@ -66,9 +87,21 @@ class ArchiveResource(Resource):
             'last_version': 0
         },
         'default_sort': [('_updated', -1)],
+        'elastic_filter_callback': private_content_filter
     }
-    resource_methods = ['GET', 'POST', 'DELETE']
+    resource_methods = ['GET', 'POST']
+    item_methods = ['GET', 'PATCH', 'PUT']
     versioning = True
+    privileges = {'POST': 'archive', 'PATCH': 'archive', 'PUT': 'archive'}
+
+
+def update_word_count(doc):
+    """Update word count if there was change in content.
+
+    :param doc: created/udpated document
+    """
+    if doc.get('body_html'):
+        doc.setdefault('word_count', get_word_count(doc.get('body_html')))
 
 
 class ArchiveService(BaseService):
@@ -78,6 +111,7 @@ class ArchiveService(BaseService):
 
         for doc in docs:
             doc['version_creator'] = doc['original_creator']
+            update_word_count(doc)
 
     def on_created(self, docs):
         on_create_media_archive()
@@ -101,6 +135,7 @@ class ArchiveService(BaseService):
 
         updates['versioncreated'] = utcnow()
         updates['version_creator'] = str_user_id
+        update_word_count(updates)
 
         if force_unlock:
             del updates['force_unlock']
@@ -114,7 +149,8 @@ class ArchiveService(BaseService):
             updated = copy(original)
             updated.update(updates)
             add_activity(ACTIVITY_UPDATE, 'created new version {{ version }} for item {{ type }} about {{ subject }}',
-                         item=updated, version=updates['_version'], subject=get_subject(updates, original))
+                         item=updated, version=updates['_version'], subject=get_subject(updates, original),
+                         type=updated['type'])
 
     def on_replace(self, document, original):
         user = get_user()
@@ -189,6 +225,7 @@ class AutoSaveResource(Resource):
     resource_methods = ['POST']
     item_methods = ['GET', 'PUT', 'PATCH']
     resource_title = endpoint_name
+    privileges = {'POST': 'archive', 'PATCH': 'archive', 'PUT': 'archive'}
 
 
 class ArchiveSaveService(BaseService):

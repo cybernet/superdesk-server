@@ -1,6 +1,8 @@
 import os
-from datetime import timedelta
 import json
+
+from datetime import timedelta
+from celery.schedules import crontab
 
 try:
     from urllib.parse import urlparse
@@ -66,18 +68,26 @@ CELERY_ALWAYS_EAGER = (env('CELERY_ALWAYS_EAGER', False) == 'True')
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_ACCEPT_CONTENT = ['pickle', 'json']  # it's using pickle when in eager mode
 
+CELERYBEAT_SCHEDULE_FILENAME = env('CELERYBEAT_SCHEDULE_FILENAME', './celerybeatschedule.db')
 CELERYBEAT_SCHEDULE = {
-    'fetch_ingest': {
-        'task': 'superdesk.io.fetch_ingest',
-        'schedule': timedelta(minutes=5)
+    'ingest:update': {
+        'task': 'superdesk.io.update_ingest',
+        # there is internal schedule for updates per provider,
+        # so this is mininal interval when an update can occur
+        'schedule': timedelta(seconds=30),
+        'options': {'expires': 59}
     },
-    'auth_session_purge': {
+    # 'ingest:gc': {
+    #    'task': 'superdesk.io.gc_ingest',
+    #    'schedule': crontab(minute=10),
+    # },
+    'session:gc': {
         'task': 'apps.auth.session_purge',
-        'schedule': timedelta(minutes=30)
+        'schedule': crontab(minute=20)
     },
-    'spike_purge': {
+    'spike:gc': {
         'task': 'apps.archive.spike_purge',
-        'schedule': timedelta(minutes=60)
+        'schedule': crontab(minute=30)
     }
 }
 
@@ -112,7 +122,9 @@ INSTALLED_APPS = [
     'apps.vocabularies',
     'apps.legal_archive',
     'apps.search',
-    'apps.packages'
+    'apps.packages',
+    'apps.privilege',
+    'apps.rule_sets'
 ]
 
 RESOURCE_METHODS = ['GET', 'POST']
@@ -149,9 +161,9 @@ ACTIVATE_ACCOUNT_TOKEN_TIME_TO_LIVE = int(env('ACTIVATE_TTL', 7))
 MAIL_SERVER = env('MAIL_SERVER', 'smtp.googlemail.com')
 MAIL_PORT = int(env('MAIL_PORT', 465))
 MAIL_USE_TLS = json.loads(env('MAIL_USE_TLS', 'False').lower())
-MAIL_USE_SSL = json.loads(env('MAIL_USE_SSL', 'True').lower())
+MAIL_USE_SSL = json.loads(env('MAIL_USE_SSL', 'False').lower())
 MAIL_USERNAME = env('MAIL_USERNAME', 'admin@sourcefabric.org')
-MAIL_PASSWORD = env('MAIL_PASSWORD', 'admin-test')
+MAIL_PASSWORD = env('MAIL_PASSWORD', '')
 ADMINS = [MAIL_USERNAME]
 
 # LDAP settings
@@ -183,3 +195,9 @@ SESSION_EXPIRY_MINUTES = 240
 
 # The number of minutes before spiked items purged
 SPIKE_EXPIRY_MINUTES = 300
+
+# This setting can be used to apply a limit on the elastic search queries, it is a limit per shard.
+# A value of -1 indicates that no limit will be applied.
+# If for example the elastic has 5 shards and you wish to limit the number of search results to 1000 then set the value
+# to 200 (1000/5).
+MAX_SEARCH_DEPTH = -1

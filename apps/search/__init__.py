@@ -2,6 +2,8 @@
 import superdesk
 from flask import current_app as app, json
 from apps.archive.common import aggregations
+from apps.archive.common import aggregations
+from eve_elastic.elastic import set_filters
 
 
 class SearchService(superdesk.Service):
@@ -13,10 +15,19 @@ class SearchService(superdesk.Service):
     available_repos = ('ingest', 'archive')
     default_repos = ['ingest', 'archive']
 
+    private_filters = [{
+        'or': [
+            {'exists': {'field': 'task.desk'}},
+            {'not': {'term': {'_type': 'archive'}}},
+        ]
+    }]
+
     def _get_query(self, req):
         """Get elastic query."""
         args = getattr(req, 'args', {})
-        return json.loads(args.get('source')) if args.get('source') else {}
+        query = json.loads(args.get('source')) if args.get('source') else {'query': {'filtered': {}}}
+        query['aggs'] = aggregations
+        return query
 
     def _get_types(self, req):
         """Get document types for the given query."""
@@ -30,6 +41,11 @@ class SearchService(superdesk.Service):
         query = self._get_query(req)
         types = self._get_types(req)
         query['aggs'] = aggregations
+        # if the system has a setting value for the maximum search depth then apply the filter
+        if not app.settings['MAX_SEARCH_DEPTH'] == -1:
+            set_filters(query, self.private_filters + [{'limit': {'value': app.settings['MAX_SEARCH_DEPTH']}}])
+        else:
+            set_filters(query, self.private_filters)
         hits = elastic.es.search(body=query, index=elastic.index, doc_type=types)
         docs = elastic._parse_hits(hits, 'ingest')  # any resource here will do
         for resource in types:

@@ -1,6 +1,7 @@
 
 from superdesk.resource import Resource
 from superdesk.io import allowed_providers
+
 DAYS_TO_KEEP = 2
 
 
@@ -35,5 +36,21 @@ class IngestProviderResource(Resource):
         'source': {
             'type': 'string',
             'required': True,
-        }
+        },
+        'is_closed': {
+            'type': 'boolean',
+            'default': False
+        },
+        'update_schedule': {
+            'type': 'dict',
+            'schema': {
+                'hours': {'type': 'integer'},
+                'minutes': {'type': 'integer', 'default': 5},
+                'seconds': {'type': 'integer'},
+            }
+        },
+        'last_updated': {'type': 'datetime'},
+        'rule_set': Resource.rel('rule_sets', nullable=True)
     }
+
+    privileges = {'POST': 'ingest_providers', 'PATCH': 'ingest_providers', 'DELETE': 'ingest_providers'}
